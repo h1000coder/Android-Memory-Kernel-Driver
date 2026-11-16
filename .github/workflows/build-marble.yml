@@ -1,0 +1,95 @@
+name: build-marble
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      DRIVER_NAME: my-driver
+      HIDE_SELF_MODULE: '1'
+      HIDE_VMAP: '1'
+      HIDE_TASK: '1'
+      HIDE_KGSL_STRENGTH: '0'
+      KERNEL_COMMIT: 27f6dac10ed1
+      ARCH: arm64
+      CROSS_COMPILE: aarch64-linux-gnu-
+      CLANG_TRIPLE: aarch64-linux-gnu-
+
+    steps:
+      - name: Checkout driver source
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            bc bison flex libssl-dev libelf-dev \
+            python3 gcc-aarch64-linux-gnu binutils-aarch64-linux-gnu \
+            pahole dwarves
+
+      - name: Install clang 20
+        run: |
+          sudo apt-get install -y -qq clang-20 llvm-20
+          sudo ln -sf /usr/bin/clang-20 /usr/local/bin/clang
+          sudo ln -sf /usr/bin/llvm-strip-20 /usr/local/bin/llvm-strip
+          clang --version
+
+      - name: Clone LineageOS marble kernel
+        run: |
+          git clone \
+            --filter=blob:none \
+            --no-checkout \
+            --branch lineage-23.0 \
+            https://github.com/LineageOS/android_kernel_xiaomi_sm8450 \
+            kernel-src
+          cd kernel-src
+          git checkout ${{ env.KERNEL_COMMIT }}
+
+      - name: Find and apply marble defconfig
+        run: |
+          cd kernel-src
+          # list available defconfigs so we can pick the right one
+          find arch/arm64/configs -name '*marble*' -o -name '*gki*' | sort
+          # use gki_defconfig as base; adjust if marble-specific one exists
+          if ls arch/arm64/configs/vendor/marble_defconfig 2>/dev/null; then
+            make ARCH=arm64 CC=clang \
+                 CROSS_COMPILE=aarch64-linux-gnu- \
+                 CLANG_TRIPLE=aarch64-linux-gnu- \
+                 vendor/marble_defconfig
+          else
+            make ARCH=arm64 CC=clang \
+                 CROSS_COMPILE=aarch64-linux-gnu- \
+                 CLANG_TRIPLE=aarch64-linux-gnu- \
+                 gki_defconfig
+          fi
+
+      - name: Prepare kernel headers and Module.symvers
+        run: |
+          cd kernel-src
+          make ARCH=arm64 CC=clang \
+               CROSS_COMPILE=aarch64-linux-gnu- \
+               CLANG_TRIPLE=aarch64-linux-gnu- \
+               -j$(nproc) scripts prepare modules_prepare
+
+      - name: Build driver
+        working-directory: driver
+        run: |
+          make -j$(nproc) \
+            ARCH=arm64 \
+            CC=clang \
+            CROSS_COMPILE=aarch64-linux-gnu- \
+            CLANG_TRIPLE=aarch64-linux-gnu- \
+            KDIR="${GITHUB_WORKSPACE}/kernel-src"
+          ls -la "${DRIVER_NAME}.ko"
+          strings "${DRIVER_NAME}.ko" | grep vermagic
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: my-driver-marble.ko
+          path: driver/my-driver.ko
+          if-no-files-found: error
+          retention-days: 30
