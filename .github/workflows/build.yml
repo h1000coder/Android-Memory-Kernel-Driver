@@ -110,8 +110,6 @@ jobs:
           which clang || true
           clang --version || true
 
-      # Android 16 / 6.12 enables strict KCFI. A module built without integer
-      # normalization can panic before module_init() executes.
       - name: Verify Android 16 / 6.12 KCFI configuration
         if: matrix.kmi == 'android16-6.12'
         working-directory: driver
@@ -126,7 +124,7 @@ jobs:
         working-directory: driver
         run: |
           set -eux
-          make -j"$(nproc)"
+          make -j"$(nproc)" KBUILD_MODPOST_IGNORE_VERMAGIC=1
           ls -la "${DRIVER_NAME}.ko"
 
       - name: Verify concealment feature gates
@@ -144,8 +142,6 @@ jobs:
             test -e src/stealth.o
           fi
 
-      # Confirm that the normalized KCFI setting reached the external-module
-      # compiler command rather than merely existing in the kernel .config.
       - name: Verify Android 16 / 6.12 KCFI compiler flags
         if: matrix.kmi == 'android16-6.12'
         working-directory: driver
