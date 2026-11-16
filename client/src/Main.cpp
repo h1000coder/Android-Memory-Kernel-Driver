@@ -21,8 +21,8 @@
 
 #include "Driver.h"
 
-constexpr const char* kDefaultPackage = "com.example.game";
-constexpr const char* kDefaultModule = "libUE4.so";
+constexpr const char* kDefaultPackage = "com.dts.freefireth";
+constexpr const char* kDefaultModule = "libil2cpp.so";
 
 static std::string prompt(const char* label) {
     std::printf("%s", label);
